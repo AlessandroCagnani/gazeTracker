@@ -44,19 +44,38 @@ class NpEncoder(json.JSONEncoder):
 class Demo:
     def __init__(self, mode=0, user_calib = None):
         self.mode = mode
-        self.user_calib = user_calib
         self.camera = Camera("data/camera/camera_params.yaml")
         self.gaze_estimator = GazeEstimator(self.camera, True)
+
+        self.ref_points = [(1792 // 2, 1120 // 2),
+                          (1792 // 5, (1120 // 5) * 2),
+                          (1792 // 5, (1120 // 5) * 3),
+                          (1792 // 5 * 2, 1120 // 5),
+                          (1792 // 5 * 3, 1120 // 5),
+                          (1792 // 5 * 2, 1120 // 5 * 4),
+                          (1792 // 5 * 3, 1120 // 5 * 4),
+                          (1792 // 5 * 4, (1120 // 5) * 2),
+                          (1792 // 5 * 4, (1120 // 5) * 3)]
 
         if not mode == 1:
             pygame.init()
             screen = pygame.display.set_mode((1792, 1120), pygame.FULLSCREEN)
             self.visualizer = Visualizer(screen)
+            if mode == 2:
+                if user_calib is None:
+                    print("[ TRACKER ] calibration file not provided, might be inaccurate")
+                    self.calib_data = None
+                else:
+                    self.calib_data = self.get_calib_data(user_calib)
         else:
             self.visualizer = Visualizer()
+
+        self.show_ref = False
+        self.show_error_vectors = False
+        self.show_correct_gaze = False
         self.run()
 
-        #TODO: add flag to see correction / error vectors
+
 
     def run(self):
         if self.mode == 0:
@@ -85,24 +104,6 @@ class Demo:
     def run_tracker(self):
 
         print("[ TRACKER ] starting eye tracker ")
-        off_x = 0
-        off_y = 0
-        if self.user_calib is not None:
-            print("[ TRACKER ] getting calibration ")
-            data = self.get_calib_data(self.user_calib)
-            center = next(obj for obj in data if obj["point"][0] == 896 and obj["point"][1] == 560)
-            off_x = 896 - center["mean"][0]
-            off_y = 560 - center["mean"][1]
-
-        ref_points = [(1792 // 2, 1120 // 2),
-                      (1792 // 5, (1120 // 5) * 2),
-                      (1792 // 5, (1120 // 5) * 3),
-                      (1792 // 5 * 2, 1120 // 5),
-                      (1792 // 5 * 3, 1120 // 5),
-                      (1792 // 5 * 2, 1120 // 5 * 4),
-                      (1792 // 5 * 3, 1120 // 5 * 4),
-                      (1792 // 5 * 4, (1120 // 5) * 2),
-                      (1792 // 5 * 4, (1120 // 5) * 3)]
 
         while True:
             self.visualizer.fill_background((255, 255, 255))
@@ -122,12 +123,24 @@ class Demo:
 
                 # face.center[2] = face.get_distance(self.camera)[1]
 
-                self.visualizer.draw_ref_points(ref_points)
+                if self.show_ref:
+                    self.visualizer.draw_ref_points(self.ref_points)
+
+                if self.show_error_vectors:
+                    for calib in self.calib_data:
+                        error_v = self.get_error_vector(calib["point"], calib["mean"])
+                        self.visualizer.draw_arrow(calib["point"], calib["point"]+error_v, (255, 0, 0), 2)
 
                 estimated_point = self.gaze_to_screen(face)
 
-                corrected_point = (estimated_point[0] + off_x, estimated_point[1] + off_y)
-                self.visualizer.draw_point(corrected_point, (0, 0, 255), 10)
+                correction_vector = np.asarray([0, 0])
+                if self.show_correct_gaze:
+                    correction_vector = self.idw_interpolation(estimated_point)
+
+                x = int(estimated_point[0] + correction_vector[0])
+                y = int(estimated_point[1] + correction_vector[1])
+
+                self.visualizer.draw_point((x, y), (0, 0, 255), 10)
 
                 pygame.display.update()
             pygame.time.delay(10)
@@ -139,6 +152,12 @@ class Demo:
                     if event.key == pygame.K_q:
                         pygame.quit()
                         return
+                    elif event.key == pygame.K_e:
+                        self.show_error_vectors = not self.show_error_vectors
+                    elif event.key == pygame.K_c:
+                        self.show_correct_gaze = not self.show_correct_gaze
+                    elif event.key == pygame.K_r:
+                        self.show_ref = not self.show_ref
 
     def calib_routine(self):
 
@@ -184,7 +203,6 @@ class Demo:
                                           "Press 's' to save calibration data",
                                           (255, 0, 0),
                                           (10, 10))
-
 
                 estimated_point = self.gaze_to_screen(face)
 
@@ -243,6 +261,35 @@ class Demo:
             print("Gaze vector is parallel to the screen")
             return None, None
 
+    def euclidean_distance(self, p1, p2):
+        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+
+    def idw_interpolation(self, estimated_point, power=2):
+        errors = [self.get_correection_vector(data["point"], data["mean"]) for data in self.calib_data]
+
+        weights = []
+        for data in self.calib_data:
+            distance = self.euclidean_distance(estimated_point, data["point"])
+            if distance <= 10:
+                # If the input point is exactly at a known point, return the corresponding error
+                return self.get_correection_vector(data["point"], data["mean"])
+            weight = 1 / (distance ** power)
+            weights.append(weight)
+
+        weights = np.array(weights) / np.sum(weights)
+
+        interpolated_error = np.dot(weights, errors)
+        return interpolated_error
+
+    def get_error_vector(self, true_point, estimated_point):
+        # magnitude = np.linalg.norm(np.array(estimated_point) - np.array(true_point))
+        # normalized = (np.array(estimated_point) - np.array(true_point)) / magnitude
+        return np.array(estimated_point) - np.array(true_point)
+
+    def get_correection_vector(self, true_point, estimated_point):
+        # magnitude = np.linalg.norm(np.array(true_point) - np.array(estimated_point))
+        # normalized = (np.array(true_point) - np.array(estimated_point)) / magnitude
+        return np.array(true_point) - np.array(estimated_point)
 
 
     def get_calib_data(self, name):

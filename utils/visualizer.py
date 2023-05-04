@@ -20,6 +20,10 @@ class Visualizer:
         for point in ref_points:
             self.draw_point(point, (0, 255, 0), 10)
 
+    def draw_arrow(self, start, end, color, width=1):
+        pygame.draw.line(self.screen, color, start, end, width)
+
+
 
 
 
