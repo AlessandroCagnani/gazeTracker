@@ -1,0 +1,7 @@
+data/calib/*
+data/camera/dlib/*
+data/models/*
+data/shape_predictor_68_face_landmarks.dat
+.idea/*
+
+
