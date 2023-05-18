@@ -25,10 +25,19 @@ class controller:
     def update(self):
         # Fetch the image from the model and update the view
         if self.view.stackedWidget.currentWidget().mode == 0:
+            if self.view.isFullScreen():
+                self.view.showNormal()
+                return
+
             img = self.model.display_self()
             self.view.stackedWidget.currentWidget().update_image(img)
         else:
-            points = self.model.point_of_gaze()
+            if not self.view.isFullScreen():
+                self.view.showFullScreen()
+                return
+            x, y = self.model.point_of_gaze()
+            self.view.stackedWidget.currentWidget().drawCircle(x, y)
+
 
 
         # print(self.view.stackedWidget.currentWidget().mode)

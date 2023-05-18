@@ -66,6 +66,8 @@ class model:
         undistorted = cv2.undistort(frame, self.camera.camera_matrix, self.camera.dist_coefficients)
         faces = self.gaze_estimator.detect_faces(undistorted)
 
+        # TODO: if no face detected, return None
+        # TODO: return or series of points or return only from biggest bbox
         for face in faces:
             self.gaze_estimator.estimate_gaze(undistorted, face)
             # print("face center: ", face.center)
@@ -105,8 +107,6 @@ class model:
 
         return self.visualizer.get_image()
 
-
-
     def gaze_to_screen(self, face):
         plane_norm = np.array([0, 0, 1])
 
@@ -118,14 +118,14 @@ class model:
             p_point = np.array([0, 0, 0])
             t = np.dot(p_point - face.leye.center * 1000, plane_norm) / d
             gaze_point = face.leye.center * 1000 + t * face.gaze_vector
-            print(f"Gaze point: {gaze_point}")
+            # print(f"Gaze point: {gaze_point}")
             # Check if gaze_point is within the screen boundaries
             x, y = get_point_on_screen((340, 220), (1792, 1120), gaze_point)
-            print(f"Screen coordinates: {x}, {y}")
+            # print(f"Screen coordinates: {x}, {y}")
 
             return x, y
         else:
-            print("Gaze vector is parallel to the screen")
+            # print("Gaze vector is parallel to the screen")
             return None, None
 
     def euclidean_distance(self, p1, p2):

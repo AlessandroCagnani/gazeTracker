@@ -1,7 +1,8 @@
+from PySide6 import QtCore
 from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QVBoxLayout, QWidget, QStackedWidget, QLabel, QGroupBox
 from PySide6.QtCore import Signal, Slot
 
-from PySide6.QtGui import QImage, QPixmap, QFont
+from PySide6.QtGui import QImage, QPixmap, QFont, QColor, QPainter, QPen
 from PySide6.QtCore import Signal, Qt
 import cv2
 import sys
@@ -50,45 +51,54 @@ class ModeMenu(QWidget):
         self.parent().setCurrentIndex(2)
         self.parent().parent().writeLegend()
 
-class tracker_widgt(QWidget):
-    def __init__(self):
+
+
+# TODO create parent class for mode1 and mode2
+class ModeWidget(QWidget):
+    def __init__(self, mode):
         super().__init__()
 
-        layout = QVBoxLayout()
-        self.mode = 1
-        self.label = QLabel("Mode 1")
-        layout.addWidget(self.label)
+        self.mode = mode
+        self.mode = mode
+        self.layout = QVBoxLayout()
 
         self.backButton = QPushButton("Back to Menu")
+        self.backButton.setFixedSize(200, 50)
         self.backButton.clicked.connect(self.handleBackButton)
-        layout.addWidget(self.backButton)
+        self.layout.addWidget(self.backButton, alignment=QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter)
 
-        self.setLayout(layout)
+        self.setLayout(self.layout)
+
+        self.circle_radius = 10
+        self.circle_color = QColor(255, 0, 0)  # Red color
+        self.circle_position = None
+    def paintEvent(self, event):
+        if self.circle_position:
+            painter = QPainter(self)
+            painter.setPen(QPen(self.circle_color, 3, Qt.SolidLine))
+            painter.drawEllipse(self.circle_position[0] - self.circle_radius,
+                                self.circle_position[1] - self.circle_radius,
+                                self.circle_radius * 2,
+                                self.circle_radius * 2)
+
+    def drawCircle(self, x, y):
+        self.circle_position = (x, y)
+        self.update()
 
     @Slot()
     def handleBackButton(self):
         self.parent().setCurrentIndex(0)
         self.parent().parent().writeLegend()
 
-class calib_widjet(QWidget):
+class tracker_widgt(ModeWidget):
     def __init__(self):
-        super().__init__()
+        super().__init__(1)
 
-        layout = QVBoxLayout()
-        self.mode = 2
-        self.label = QLabel("Mode 2")
-        layout.addWidget(self.label)
 
-        self.backButton = QPushButton("Back to Menu")
-        self.backButton.clicked.connect(self.handleBackButton)
-        layout.addWidget(self.backButton)
+class calib_widjet(ModeWidget):
+    def __init__(self):
+        super().__init__(2)
 
-        self.setLayout(layout)
-
-    @Slot()
-    def handleBackButton(self):
-        self.parent().setCurrentIndex(0)
-        self.parent().parent().writeLegend()
 
 class MainWindow(QMainWindow):
     def __init__(self):
