@@ -1,12 +1,5 @@
-from PySide6.QtWidgets import QApplication
-
 from gaze_estimation.gaze_estimator.common import Camera, visualizer
 from gaze_estimation.gaze_estimator import GazeEstimator
-from utils.visualizer import Visualizer
-from utils.visualizer2 import MainWindow
-
-import sys
-
 
 import cv2
 import numpy as np

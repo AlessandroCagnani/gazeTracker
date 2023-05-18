@@ -1,7 +1,7 @@
-from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QVBoxLayout, QWidget, QStackedWidget, QLabel
+from PySide6.QtWidgets import QMainWindow, QApplication, QPushButton, QVBoxLayout, QWidget, QStackedWidget, QLabel, QGroupBox
 from PySide6.QtCore import Signal, Slot
 
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtGui import QImage, QPixmap, QFont
 from PySide6.QtCore import Signal, Qt
 import cv2
 import sys
@@ -43,10 +43,13 @@ class ModeMenu(QWidget):
     @Slot()
     def handleMode1Button(self):
         self.parent().setCurrentIndex(1)
+        self.parent().parent().writeLegend()
 
     @Slot()
     def handleMode2Button(self):
         self.parent().setCurrentIndex(2)
+        self.parent().parent().writeLegend()
+
 class tracker_widgt(QWidget):
     def __init__(self):
         super().__init__()
@@ -65,6 +68,7 @@ class tracker_widgt(QWidget):
     @Slot()
     def handleBackButton(self):
         self.parent().setCurrentIndex(0)
+        self.parent().parent().writeLegend()
 
 class calib_widjet(QWidget):
     def __init__(self):
@@ -84,17 +88,50 @@ class calib_widjet(QWidget):
     @Slot()
     def handleBackButton(self):
         self.parent().setCurrentIndex(0)
+        self.parent().parent().writeLegend()
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
+        self.legend = {
+            "0": ["press bla bla", "press bla bla", "press bla bla"],
+            "1": ["press to see check box", "press bla bla", "press bla bla"],
+            "2": ["press to calibrate", "press bla bla", "press bla bla"]
+        }
+
         self.stackedWidget = QStackedWidget()
         self.setCentralWidget(self.stackedWidget)
 
-        self.stackedWidget.addWidget(ModeMenu())
-        self.stackedWidget.addWidget(tracker_widgt())
-        self.stackedWidget.addWidget(calib_widjet())
+        self.mode_menu = ModeMenu()
+        self.tracker_view = tracker_widgt()
+        self.calib_view = calib_widjet()
+
+        self.stackedWidget.addWidget(self.mode_menu)
+        self.stackedWidget.addWidget(self.tracker_view)
+        self.stackedWidget.addWidget(self.calib_view)
+
+        legend = QGroupBox(self)
+        legend.setGeometry(20, 60, 220, 150)
+        legend.setTitle("Legend")
+        legend.setStyleSheet("QGroupBox { font-weight: bold;}")
+        self.legend_layout = QVBoxLayout()
+        legend.setLayout(self.legend_layout)
+        self.writeLegend()
+
+    def clearLayout(self, layout):
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+    def writeLegend(self):
+        self.clearLayout(self.legend_layout)
+        for l in self.legend[str(self.stackedWidget.currentIndex())]:
+            label = QLabel(l)
+            label.setFont(QFont("Futura", 14))
+            self.legend_layout.addWidget(label)
+
 
 # app = QApplication([])
 #
