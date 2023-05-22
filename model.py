@@ -56,7 +56,24 @@ class model:
                           (1792 // 5 * 4, (1120 // 5) * 2),
                           (1792 // 5 * 4, (1120 // 5) * 3)]
 
+        self.calib_file = None
         self.calib_data = None
+
+    def set_calib_file(self, calib_file):
+        self.calib_file = calib_file
+        self.get_calib_data()
+
+    def get_calib_data(self):
+        if self.calib_file is None:
+            self.calib_data = None
+            return
+
+        with open(self.calib_file, "r") as f:
+            data = json.load(f)
+        self.calib_data = data
+
+    def set_file(self, filename):
+        self.calib_file = filename
 
     def point_of_gaze(self):
 
@@ -83,9 +100,13 @@ class model:
             x = int(estimated_point[0] + correction_vector[0])
             y = int(estimated_point[1] + correction_vector[1])
 
+            # print(x, y)
             return (x, y)
 
-    def display_self(self):
+    # def register_calibration_point(self, point):
+
+
+    def display_self(self, config):
         # print("[ MODEL ] self display ")
 
         ret, frame = self.camera.get_frame()
@@ -99,10 +120,14 @@ class model:
 
         for face in faces:
             self.gaze_estimator.estimate_gaze(undistorted, face)
-            self._draw_face_bbox(face)
-            self._draw_head_pose(face)
-            self._draw_landmarks(face)
-            self._draw_face_template_model(face)
+            if config["bbox"]:
+                self._draw_face_bbox(face)
+            if config["head_pose"]:
+                self._draw_head_pose(face)
+            if config["landmarks"]:
+                self._draw_face_template_model(face)
+            # self._draw_landmarks(face)
+
             self._draw_gaze_vector(face)
 
         return self.visualizer.get_image()
@@ -158,10 +183,6 @@ class model:
         # normalized = (np.array(true_point) - np.array(estimated_point)) / magnitude
         return np.array(true_point) - np.array(estimated_point)
 
-    def get_calib_data(self, name):
-        with open(f"data/calib/{name}.json", "r") as f:
-            data = json.load(f)
-        return data
 
     def _draw_face_bbox(self, face):
 
