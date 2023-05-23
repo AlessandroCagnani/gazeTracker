@@ -10,13 +10,17 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QComboBox, QLin
 class TrackerThread(QThread):
     point = Signal(int, int)
 
-    def __init__(self, model):
+    def __init__(self, model, mode):
         super().__init__()
         self.model = model
+        self.mode = mode
 
     def run(self):
         while not self.isInterruptionRequested():
-            x, y = self.model.point_of_gaze()
+            point = self.model.point_of_gaze(self.mode)
+            if point is None:
+                continue
+            x, y = point
             self.point.emit(x, y)
 
 
@@ -27,7 +31,7 @@ class ModeWidget(QWidget):
         self.mode = mode
         self.layout = QVBoxLayout()
 
-        self.thread = TrackerThread(model)
+        self.thread = TrackerThread(model, mode)
         self.thread.point.connect(self.drawCircle)
 
         self.backButton = QPushButton("Back to Menu")
@@ -87,7 +91,7 @@ class calib_widget(ModeWidget):
 
         self.isSpacePressed = False
 
-        self.ref_point_radius = 5  # Radius of reference points
+        self.ref_point_radius = 10  # Radius of reference points
         self.ref_point_color = QColor(255, 0, 0)  # Red color
         self.ref_points = model.ref_points if model else []
 
@@ -97,20 +101,31 @@ class calib_widget(ModeWidget):
         painter = QPainter(self)
         painter.setPen(QPen(self.circle_color, 3, Qt.SolidLine))
 
-        for x, y in self.ref_points:
+        painter.setBrush(QColor(255, 0, 0))
+        for idx, point in enumerate(self.ref_points):
+            if idx == self.parent().parent().model.current_ref_point:
+                painter.setBrush(QColor(0, 255, 0))
+
+            x, y = point
             painter.drawEllipse(x - self.ref_point_radius,
                                 y - self.ref_point_radius,
                                 self.ref_point_radius * 2,
                                 self.ref_point_radius * 2)
 
+            if painter.brush() != QColor(255, 0, 0):
+                painter.setBrush(QColor(255, 0, 0))
+
         if self.circle_position:
             painter.setPen(QPen(self.circle_color, 3, Qt.SolidLine))
+            if self.isSpacePressed:
+                painter.setBrush(QColor(0, 255, 0))
+                self.isSpacePressed = False
             painter.drawEllipse(self.circle_position[0] - self.circle_radius,
                                 self.circle_position[1] - self.circle_radius,
                                 self.circle_radius * 2,
                                 self.circle_radius * 2)
-        painter.end()
 
+        painter.end()
 
 
 class FilePickerWidget(QWidget):
@@ -188,6 +203,7 @@ class FileInputWidget(QWidget):
 
         filename = self.calib_dir + "/" + self.filenameInput.text()
         self.parent().parent().set_file_data(filename)
+        self.parent().parent().model.init_calib_record()
         print("////////  ", self.parent().parent().model.calib_file)
         print("////////  ", self.parent().parent().model.calib_data)
 

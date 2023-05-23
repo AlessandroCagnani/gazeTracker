@@ -56,26 +56,16 @@ class model:
                           (1792 // 5 * 4, (1120 // 5) * 2),
                           (1792 // 5 * 4, (1120 // 5) * 3)]
 
+        # TODO: move calib structure to another class
         self.calib_file = None
+        # TODO: calib data = [{}], check if calib data < len(ref_points)
         self.calib_data = None
+        self.current_ref_point = 0  # index of current reference point
 
-    def set_calib_file(self, calib_file):
-        self.calib_file = calib_file
-        self.get_calib_data()
+        self.calib_record = None
 
-    def get_calib_data(self):
-        if self.calib_file is None:
-            self.calib_data = None
-            return
 
-        with open(self.calib_file, "r") as f:
-            data = json.load(f)
-        self.calib_data = data
-
-    def set_file(self, filename):
-        self.calib_file = filename
-
-    def point_of_gaze(self):
+    def point_of_gaze(self, mode):
 
         ret, frame = self.camera.get_frame()
         if not ret:
@@ -94,7 +84,7 @@ class model:
             # face.center[2] = face.get_distance(self.camera)[1]
             estimated_point = self.gaze_to_screen(face)
             correction_vector = np.asarray([0, 0])
-            if self.calib_data is not None:
+            if self.calib_data is not None and mode == 1:
                 correction_vector = self.idw_interpolation(estimated_point)
 
             x = int(estimated_point[0] + correction_vector[0])
@@ -153,8 +143,58 @@ class model:
             # print("Gaze vector is parallel to the screen")
             return None, None
 
-    def euclidean_distance(self, p1, p2):
-        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+    def init_calib_record(self):
+        self.calib_record = dict()
+        for ref_point in self.ref_points:
+            point_name = f"{ref_point[0]}_{ref_point[1]}"
+            self.calib_record[point_name] = dict()
+            self.calib_record[point_name]["data"] = []
+            self.calib_record[point_name]["mean"] = None
+
+    def register_point(self, point):
+        ref_point = self.ref_points[self.current_ref_point]
+        point_name = f"{ref_point[0]}_{ref_point[1]}"
+        self.calib_record[point_name]["data"].append(point)
+
+    def calib_next_point(self):
+        self.current_ref_point += 1
+        self.current_ref_point %= len(self.ref_points)
+
+    def save_calib(self):
+        for point_ref in self.calib_record.keys():
+            self.calib_record[point_ref]["mean"] = np.mean(self.calib_record[point_ref]["data"],
+                                                           axis=0).tolist()
+
+        calib_data = list()
+        for point_ref in self.calib_record.keys():
+            point_coord = point_ref.split("_")
+            point_coord = (int(point_coord[0]), int(point_coord[1]))
+            calib_data.append(dict(point=point_coord,
+                                   mean=self.calib_record[point_ref]["mean"],
+                                   data=self.calib_record[point_ref]["data"]))
+
+        with open(f"{self.calib_file}.json", "w") as f:
+            json.dump(calib_data, f)
+
+    def set_calib_file(self, calib_file):
+        self.calib_file = calib_file
+        self.get_calib_data()
+
+    def get_calib_data(self):
+        if self.calib_file is None:
+            self.calib_data = None
+            return
+
+        with open(self.calib_file, "r") as f:
+            data = json.load(f)
+        self.calib_data = data
+
+    def set_file(self, filename):
+        self.calib_file = filename
+
+    # def write_calib_point(self):
+
+
 
     def idw_interpolation(self, estimated_point, power=2):
         errors = [self.get_correection_vector(data["point"], data["mean"]) for data in self.calib_data]
@@ -172,6 +212,9 @@ class model:
 
         interpolated_error = np.dot(weights, errors)
         return interpolated_error
+
+    def euclidean_distance(self, p1, p2):
+        return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
 
     def get_error_vector(self, true_point, estimated_point):
         # magnitude = np.linalg.norm(np.array(estimated_point) - np.array(true_point))

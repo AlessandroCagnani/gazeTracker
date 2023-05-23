@@ -16,10 +16,15 @@ class MainWindow(QMainWindow):
 
         self.model = model()
         self.legend = {
-            "0": ["MENU", "H - display head pose",
-                  "L - display landmarks", "B - display bounding box"],
+            "0": ["MENU",
+                  "H - display head pose",
+                  "L - display landmarks",
+                  "B - display bounding box"],
             "1": ["TRACKER to see check box", "press bla bla", "press bla bla"],
-            "2": ["CALIB to calibrate", "press bla bla", "press bla bla"],
+            "2": ["CALIB",
+                  "C - record current point",
+                  "N - next point",
+                  "S - save calibration"],
             "3": ["Select file for calibration"],
             "4": ["Specify file to save"]
         }
@@ -63,14 +68,16 @@ class MainWindow(QMainWindow):
 
                 self.mode_menu.thread.set_config(self.mode_menu.config)
                 # print(self.mode_menu.config)
-            # elif self.stackedWidget.currentIndex() == 2:
-            #     key = event.key()
-            #     if key == QtCore.Qt.Key_C:
-            #         self.calib_view.calibrate()
-            #     elif key == QtCore.Qt.Key_N:
-            #         self.calib_view.calib_next_point()
-            #     elif key == QtCore.Qt.Key_S:
-            #         self.calib_view.save()
+            elif self.stackedWidget.currentIndex() == 2:
+                key = event.key()
+                if key == QtCore.Qt.Key_N:
+                    #TODO-BUG-FORSERISOLTO: when next point is the last one also the track is marked
+                    self.model.calib_next_point()
+                elif key == QtCore.Qt.Key_C:
+                    self.model.register_point(self.calib_view.circle_position)
+                    self.calib_view.isSpacePressed = True
+                elif key == QtCore.Qt.Key_S:
+                    self.model.save_calib()
             #     elif key == QtCore.Qt.Key_R:
             #         self.calib_view.reset()
 
