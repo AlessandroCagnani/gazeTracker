@@ -20,6 +20,8 @@ class Visualizer:
     def set_image(self, image: np.ndarray) -> None:
         self.image = image
 
+    def get_image(self) -> np.ndarray:
+        return cv2.flip(self.image, 1)
     def draw_bbox(self,
                   bbox: np.ndarray,
                   color: Tuple[int, int, int] = (0, 255, 0),
