@@ -155,6 +155,11 @@ class FilePickerWidget(QWidget):
 
         self.setLayout(self.layout)
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.filenameInput.clear()
+        self.filenameInput.addItems([file.name for file in os.scandir(self.calib_dir)])
+
     @Slot()
     def handleConfirmButton(self):
 
@@ -204,8 +209,6 @@ class FileInputWidget(QWidget):
         filename = self.calib_dir + "/" + self.filenameInput.text()
         self.parent().parent().set_file_data(filename)
         self.parent().parent().model.init_calib_record()
-        print("////////  ", self.parent().parent().model.calib_file)
-        print("////////  ", self.parent().parent().model.calib_data)
 
         self.parent().setCurrentIndex(2)
         self.parent().parent().writeLegend()

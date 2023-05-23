@@ -20,11 +20,14 @@ class MainWindow(QMainWindow):
                   "H - display head pose",
                   "L - display landmarks",
                   "B - display bounding box"],
-            "1": ["TRACKER to see check box", "press bla bla", "press bla bla"],
+            "1": ["TRACKER",
+                  "R - display ref points",
+                  "E - display error vectors"],
             "2": ["CALIB",
                   "C - record current point",
                   "N - next point",
-                  "S - save calibration"],
+                  "S - save calibration",
+                  "R - reset calibration"],
             "3": ["Select file for calibration"],
             "4": ["Specify file to save"]
         }
@@ -78,10 +81,8 @@ class MainWindow(QMainWindow):
                     self.calib_view.isSpacePressed = True
                 elif key == QtCore.Qt.Key_S:
                     self.model.save_calib()
-            #     elif key == QtCore.Qt.Key_R:
-            #         self.calib_view.reset()
-
-
+                elif key == QtCore.Qt.Key_R:
+                    self.model.init_calib_record()
 
         return super().eventFilter(obj, event)
 
