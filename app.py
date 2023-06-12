@@ -22,7 +22,8 @@ class MainWindow(QMainWindow):
                   "B - display bounding box"],
             "1": ["TRACKER",
                   "R - display ref points",
-                  "E - display error vectors"],
+                  "E - display error vectors",
+                  "S - display saliency map",],
             "2": ["CALIB",
                   "C - record current point",
                   "N - next point",
@@ -71,6 +72,17 @@ class MainWindow(QMainWindow):
 
                 self.mode_menu.thread.set_config(self.mode_menu.config)
                 # print(self.mode_menu.config)
+            elif self.stackedWidget.currentIndex() == 1:
+                key = event.key()
+                if key == QtCore.Qt.Key_R:
+                    self.tracker_view.config["ref_points"] = not self.tracker_view.config["ref_points"]
+                elif key == QtCore.Qt.Key_E:
+                    self.tracker_view.config["error_vectors"] = not self.tracker_view.config["error_vectors"]
+                elif key == QtCore.Qt.Key_S:
+                    self.tracker_view.config["saliency_map"] = not self.tracker_view.config["saliency_map"]
+                    self.model.use_saliency_map = self.tracker_view.config["saliency_map"]
+
+
             elif self.stackedWidget.currentIndex() == 2:
                 key = event.key()
                 if key == QtCore.Qt.Key_N:
@@ -89,6 +101,7 @@ class MainWindow(QMainWindow):
 
     def set_calib_data(self, filename):
         self.model.set_calib_file(filename)
+        self.tracker_view.calib_data = self.model.calib_data
 
     def set_file_data(self, filename):
         self.model.set_file(filename)

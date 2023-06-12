@@ -1,12 +1,28 @@
+from skimage.transform import resize
+
 from gaze_estimation.gaze_estimator.common import Camera, visualizer
 from gaze_estimation.gaze_estimator import GazeEstimator
+
+from deepgaze.saliency_map import FasaSaliencyMapping
 
 import cv2
 import numpy as np
 from typing import Tuple
 import json
+import torchvision
+import torchvision.transforms as T
+import torch
+import torchvision.models as models
+from PIL import Image
 
-import argparse
+
+
+slc_transform = T.Compose([
+    T.Resize((224, 224)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    T.Lambda(lambda x: x[None]),
+])
 
 def get_point_on_screen(monitor_mm: Tuple[float, float], monitor_pixels: Tuple[float, float], result: np.ndarray) -> Tuple[int, int]:
     """
@@ -63,7 +79,89 @@ class model:
         self.current_ref_point = 0  # index of current reference point
 
         self.calib_record = None
+        self.sift = self.get_sift()
+        self.use_saliency_map = False
 
+    def get_saliency(self):
+
+        def preprocess(image, size=224):
+            transform = T.Compose([
+                T.Resize((size, size)),
+                T.ToTensor(),
+                T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                T.Lambda(lambda x: x[None]),
+            ])
+            return transform(image)
+
+        def deprocess(image):
+            transform = T.Compose([
+                T.Lambda(lambda x: x[0]),
+                T.Normalize(mean=[0, 0, 0], std=[4.3668, 4.4643, 4.4444]),
+                T.Normalize(mean=[-0.485, -0.456, -0.406], std=[1, 1, 1]),
+                T.ToPILImage(),
+            ])
+            return transform(image)
+
+        model_ = 50
+        if model_ == 18:
+            model = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights)
+        elif model_ == 34:
+            model = torchvision.models.resnet34(weights=torchvision.models.ResNet34_Weights)
+        elif model_ == 50:
+            model = torchvision.models.resnet50(weights=torchvision.models.ResNet50_Weights)
+        elif model_ == 101:
+            model = torchvision.models.resnet101(weights=torchvision.models.ResNet101_Weights)
+        elif model_ == 152:
+            model = torchvision.models.resnet152(weights=torchvision.models.ResNet152_Weights)
+
+        img = Image.open('data/backgrounds/bear-abandoned1.png').convert("RGB")
+        X = preprocess(img)
+        model.eval()
+        X.requires_grad_()
+        scores = model(X)
+        score_max_index = scores.argmax()
+        score_max = scores[0, score_max_index]
+        score_max.backward()
+        slc, _ = torch.max(X.grad.data.abs(), dim=1)
+        slc = (slc - slc.min()) / (slc.max() - slc.min())
+
+        # Resize the saliency map to the original image size
+        slc_resized = resize(slc[0].numpy(), img.size[::-1], mode='reflect', anti_aliasing=True)
+        return slc_resized
+
+    def get_sift(self):
+        img = cv2.imread('data/backgrounds/bear-abandoned1.png')
+        # Converting image to grayscale
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Applying SIFT detector
+        sift = cv2.xfeatures2d.SIFT_create()
+        kp = sift.detect(gray, None)
+
+        # insert in a np matrix
+        kp, des = sift.compute(gray, kp)
+        size_threshold = 10.0
+
+        # Keep only the keypoints with size greater than the threshold
+        kp = [keypoint for keypoint in kp if keypoint.size > size_threshold]
+        return kp
+
+    # this one use sift keypoints
+    def adjust_gaze_point(self, gaze_point):
+        if not self.sift:
+            return gaze_point
+
+        # Compute the distance and size from the gaze point to each keypoint
+        distances_and_sizes = [(np.linalg.norm(np.array(gaze_point) - np.array(kp.pt)), kp.size) for kp in
+                               self.sift]
+
+        # Compute the weights (inverse of the distance squared, multiplied by size)
+        weights = [(size / (dist ** 2)) if dist != 0 else 0 for dist, size in distances_and_sizes]
+
+        # Compute the weighted average of the keypoint positions
+        adjusted_gaze_point = np.average([kp.pt for kp in self.sift], weights=weights, axis=0)
+
+        return adjusted_gaze_point
 
     def point_of_gaze(self, mode):
 
@@ -75,14 +173,17 @@ class model:
 
         # TODO: if no face detected, return None
         # TODO: return or series of points or return only from biggest bbox
-        for face in faces:
-            self.gaze_estimator.estimate_gaze(undistorted, face)
+        faces.sort(key=lambda x: (x.bbox[1][0] - x.bbox[0][0]) * (x.bbox[1][1] - x.bbox[0][1]), reverse=True)
+        biggest_face = faces[0] if len(faces) > 0 else None
+
+        if biggest_face:
+            self.gaze_estimator.estimate_gaze(undistorted, biggest_face)
             # print("face center: ", face.center)
             # print("gaze vecotr: ", face.gaze_vector)
             # print("distnce from camera: ", face.get_distance(self.camera))
 
             # face.center[2] = face.get_distance(self.camera)[1]
-            estimated_point = self.gaze_to_screen(face)
+            estimated_point = self.gaze_to_screen(biggest_face)
             correction_vector = np.asarray([0, 0])
             if self.calib_data is not None and mode == 1:
                 correction_vector = self.idw_interpolation(estimated_point)
@@ -90,10 +191,9 @@ class model:
             x = int(estimated_point[0] + correction_vector[0])
             y = int(estimated_point[1] + correction_vector[1])
 
-            # print(x, y)
-            return (x, y)
+            return (int(x), int(y))
 
-    # def register_calibration_point(self, point):
+
 
 
     def display_self(self, config):
@@ -142,6 +242,9 @@ class model:
         else:
             # print("Gaze vector is parallel to the screen")
             return None, None
+
+    def init_saliency_map(self, img):
+        self.saliency_map = self.get_saliency(img)
 
     def init_calib_record(self):
         self.calib_record = dict()
@@ -194,6 +297,29 @@ class model:
 
     # def write_calib_point(self):
 
+    def get_saliency_correction(self, point, radius, power=2):
+        weights = []
+        salient_points = []
+
+        neighbours = self.saliency_map[point[1] - radius:point[1] + radius, point[0] - radius:point[0] + radius]
+
+        for y in len(neighbours):
+            for x in len(neighbours[0]):
+                if neighbours[y][x] == 0:
+                    continue
+
+                salient_x = point[0] - radius + x
+                salient_y = point[1] - radius + y
+
+                salient_points.append((salient_x, salient_y))
+                weight = 1 / (np.euclidean_distance(point, (salient_x, salient_y)) ** power) * neighbours[y][x]
+                weights.append(weight)
+
+        weights = np.array(weights) / np.sum(weights)
+        saliency_correction = np.dot(weights, salient_points)
+
+        return saliency_correction
+
 
 
     def idw_interpolation(self, estimated_point, power=2):
@@ -202,7 +328,7 @@ class model:
         weights = []
         for data in self.calib_data:
             distance = self.euclidean_distance(estimated_point, data["point"])
-            if distance <= 10:
+            if distance <= 40:  # TODO: try different values
                 # If the input point is exactly at a known point, return the corresponding error
                 return self.get_correection_vector(data["point"], data["mean"])
             weight = 1 / (distance ** power)

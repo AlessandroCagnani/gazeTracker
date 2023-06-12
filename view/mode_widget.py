@@ -1,9 +1,10 @@
 import os
 from typing import Tuple
 
+import cv2
 from PySide6 import QtCore
 from PySide6.QtCore import Slot, Signal, QThread
-from PySide6.QtGui import QColor, QPainter, QPen, Qt, QImage
+from PySide6.QtGui import QColor, QPainter, QPen, Qt, QImage, QPalette, QBrush, QPixmap
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QComboBox, QLineEdit
 
 
@@ -83,6 +84,59 @@ class ModeWidget(QWidget):
 class tracker_widget(ModeWidget):
     def __init__(self, model):
         super().__init__(1, model)
+        self.image = QPixmap('data/backgrounds/bear-abandoned1.png')
+        # self.saliency_map = model.saliency_map if model else None
+        self.sift = model.sift if model else None
+        self.ref_points = model.ref_points if model else []
+        self.calib_data = model.calib_data if model else None
+        self.config = {
+            "ref_points": False,
+            "error_vectors": False,
+            "saliency_map": False
+        }
+        img = cv2.imread('data/backgrounds/bear-abandoned1.png')
+        img_kp = cv2.drawKeypoints(img, self.sift, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+        self.img_kp = cv2.cvtColor(img_kp, cv2.COLOR_BGR2RGB)
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.drawPixmap(self.rect(), self.image)  # Draw the image
+        if self.config["saliency_map"] and self.sift is not None:
+            # painter.setOpacity(0.5)
+
+            qimg = QPixmap(QImage(self.img_kp.data, self.img_kp.shape[1], self.img_kp.shape[0], QImage.Format_RGB888))
+            painter.drawPixmap(self.rect(), qimg)
+            # for kp in self.saliency_map:
+            #     x, y = kp.pt  # Get the (x, y) location of the keypoint
+            #     size = kp.size  # Get the size of the keypoint
+            #     painter.drawEllipse(x - size / 2,
+            #                         y - size / 2,
+            #                         size,
+            #                         size)
+            # painter.setOpacity(1.0)
+        if self.config["ref_points"] and self.calib_data is not None:
+            painter.setPen(QPen(QColor(0, 255, 0), 3, Qt.SolidLine))
+            for data in self.calib_data:
+                ref_point = data["point"]
+                error_vector = data["mean"]
+                x1, y1 = ref_point
+                painter.drawEllipse(x1 - self.circle_radius,
+                                    y1 - self.circle_radius,
+                                    self.circle_radius * 2,
+                                    self.circle_radius * 2)
+                if self.config["error_vectors"]:
+                    x2, y2 = error_vector
+                    painter.setPen(QPen(QColor(255, 0, 0), 3, Qt.SolidLine))
+                    painter.drawLine(x1, y1, x2, y2)
+                    painter.setPen(QPen(QColor(0, 255, 0), 3, Qt.SolidLine))
+
+        if self.circle_position:
+            painter.setPen(QPen(self.circle_color, 3, Qt.SolidLine))
+            painter.drawEllipse(self.circle_position[0] - self.circle_radius,
+                                self.circle_position[1] - self.circle_radius,
+                                self.circle_radius * 2,
+                                self.circle_radius * 2)
+        painter.end()
+
 
 
 class calib_widget(ModeWidget):
