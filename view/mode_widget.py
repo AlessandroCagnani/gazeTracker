@@ -17,12 +17,16 @@ class TrackerThread(QThread):
 
     def run(self):
         while not self.isInterruptionRequested():
-            point = self.model.point_of_gaze(self.mode)
-            if point is None:
-                continue
-            x, y = point
-            self.point.emit(x, y)
-
+            if self.mode == 2:
+                # TODO: poitn of gaze cant work with calibration in this state (has while)
+                point = self.model.point_of_gaze(self.mode)
+                if point is None:
+                    continue
+                x, y = point
+                self.point.emit(x, y)
+            if self.mode == 1:
+                x, y = self.model.coord_dispatch()
+                self.point.emit(x, y)
 
 class ModeWidget(QWidget):
     def __init__(self, mode, model=None):
