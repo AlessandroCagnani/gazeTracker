@@ -6,7 +6,6 @@ from PySide6.QtCore import Slot, Signal, QThread
 from PySide6.QtGui import QColor, QPainter, QPen, Qt, QImage
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QComboBox, QLineEdit
 
-
 class TrackerThread(QThread):
     point = Signal(int, int)
 
@@ -14,7 +13,7 @@ class TrackerThread(QThread):
         super().__init__()
         self.model = model
         self.mode = mode
-
+        self.count = 0
     def run(self):
         while not self.isInterruptionRequested():
             point = self.model.point_of_gaze(self.mode)
@@ -22,7 +21,6 @@ class TrackerThread(QThread):
                 continue
             x, y = point
             self.point.emit(x, y)
-
 
 class ModeWidget(QWidget):
     def __init__(self, mode, model=None):
@@ -44,6 +42,7 @@ class ModeWidget(QWidget):
         self.circle_radius = 10
         self.circle_color = QColor(255, 0, 0)  # Red color
         self.circle_position = None
+
 
     def showEvent(self, QShowEvent):
         super().showEvent(QShowEvent)
