@@ -6,6 +6,8 @@ import numpy as np
 from typing import Tuple
 import json
 from filterpy.kalman import KalmanFilter
+import collections
+from pykalman import KalmanFilter
 
 
 import argparse
@@ -40,9 +42,51 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-# mode 0: calibration, mode 1: mirror, mode 2: tracker
+
+
+class StreamingMovingAverage:
+    def __init__(self, window_size):
+        self.window_size = window_size
+        self.points = collections.deque(maxlen=window_size)
+
+    def update(self, point):
+        self.points.append(point)
+        return self.calculate_average()
+
+    def calculate_average(self):
+        if not self.points:
+            return None
+        sum_x, sum_y = 0, 0
+        for point in self.points:
+            sum_x += point[0]
+            sum_y += point[1]
+        return sum_x / len(self.points), sum_y / len(self.points)
+
+
+import statsmodels.api as sm
+class ExpSmoothing:
+    def __init__(self, window_size):
+        self.window_size = window_size
+        self.points = collections.deque(maxlen=window_size)
+
+    def update(self, point):
+        self.points.append(point)
+        mean = self.calculate_average()
+        smoothed = sm.tsa.ExponentialSmoothing([mean[0], mean[1]], trend=None).fit(smoothing_level=0.6)
+        print(smoothed.fittedvalues)
+        return smoothed.fittedvalues
+
+    def calculate_average(self):
+        if not self.points:
+            return None
+        sum_x, sum_y = 0, 0
+        for point in self.points:
+            sum_x += point[0]
+            sum_y += point[1]
+        return sum_x / len(self.points), sum_y / len(self.points)
+
 class model:
-    def __init__(self, mode=0, user_calib = None):
+    def __init__(self):
         self.camera = Camera("data/camera/camera_params.yaml")
         self.gaze_estimator = GazeEstimator(self.camera, True)
 
@@ -65,7 +109,13 @@ class model:
         self.current_ref_point = 0  # index of current reference point
 
         self.calib_record = None
-        self.states = []
+
+        # streaming avg
+        self.stream_moving_average = StreamingMovingAverage(10)
+        self.raw_window = []
+
+        # exponential smoothing
+        self.exp_smoothing = ExpSmoothing(10)
 
 
     def point_of_gaze(self, mode):
@@ -75,48 +125,30 @@ class model:
             return None
         undistorted = cv2.undistort(frame, self.camera.camera_matrix, self.camera.dist_coefficients)
 
-        states = []
-        window_size = 5
-        while len(states) < window_size:
-            faces = self.gaze_estimator.detect_faces(undistorted)
+        faces = self.gaze_estimator.detect_faces(undistorted)
 
-            # TODO: if no face detected, return None
-            # TODO: return or series of points or return only from biggest bbox
-            faces.sort(key=lambda x: (x.bbox[1][0] - x.bbox[0][0]) * (x.bbox[1][1] - x.bbox[0][1]), reverse=True)
-            biggest_face = faces[0] if len(faces) > 0 else None
+        # TODO: if no face detected, return None
+        # TODO: return or series of points or return only from biggest bbox
+        faces.sort(key=lambda x: (x.bbox[1][0] - x.bbox[0][0]) * (x.bbox[1][1] - x.bbox[0][1]), reverse=True)
+        biggest_face = faces[0] if len(faces) > 0 else None
 
-            if biggest_face is None:
-                continue
-
+        if biggest_face:
             self.gaze_estimator.estimate_gaze(undistorted, biggest_face)
-            # print("face center: ", face.center)
-            # print("gaze vecotr: ", face.gaze_vector)
-            # print("distnce from camera: ", face.get_distance(self.camera))
 
-            # face.center[2] = face.get_distance(self.camera)[1]
             estimated_point = self.gaze_to_screen(biggest_face)
             correction_vector = np.asarray([0, 0])
+
             if self.calib_data is not None and mode == 1:
                 correction_vector = self.idw_interpolation(estimated_point)
 
             x = int(estimated_point[0] + correction_vector[0])
             y = int(estimated_point[1] + correction_vector[1])
 
-            states.append([int(x), int(y)])
+            if mode == 1:
+                x, y = self.stream_moving_average.update((x, y))
+                # x, y = self.exp_smoothing.update((x, y))
 
-        self.kalman_filter_2d(states)
-        # self.moving_average_filter_2d(states)
-
-    def coord_dispatch(self):
-        if len(self.states) == 0:
-            self.point_of_gaze(1)
-        x, y = self.states.pop(0)
-        return x, y
-
-
-
-
-
+            return x, y
 
     def display_self(self, config):
         # print("[ MODEL ] self display ")
@@ -164,55 +196,6 @@ class model:
         else:
             # print("Gaze vector is parallel to the screen")
             return None, None
-
-    def moving_average_filter_2d(self, positions, kernel_size=3):
-        # Convert the list of positions to a numpy array
-        positions = np.array(positions, dtype=np.float32)
-
-        # Reshape the array to be 2D with shape (n, 1, 2) for cv2.blur
-        positions = positions.reshape(-1, 1, 2)
-
-        # Apply the blur function to perform moving average
-        filtered_positions = cv2.blur(positions, (kernel_size, 1))
-
-        # Reshape the array back to (n, 2)
-        filtered_positions = filtered_positions.reshape(-1, 2)
-
-        self.states = filtered_positions.tolist()
-    def kalman_filter_2d(self, measurements, process_noise=(1e-5, 1e-3), measurement_noise=1e-1):
-        # Initialize the Kalman filter
-        measurements = np.array(measurements, np.float32)
-        kf = cv2.KalmanFilter(4, 2)
-        kf.measurementMatrix = np.array([[1, 0, 0, 0],
-                                         [0, 0, 1, 0]], np.float32)
-
-        kf.transitionMatrix = np.array([[1, 1, 0, 0],
-                                        [0, 1, 0, 0],
-                                        [0, 0, 1, 1],
-                                        [0, 0, 0, 1]], np.float32)
-
-        kf.processNoiseCov = np.array([[1, 0, 0, 0],
-                                       [0, 1, 0, 0],
-                                       [0, 0, 1, 0],
-                                       [0, 0, 0, 1]], np.float32) * process_noise[0]
-
-        kf.measurementNoiseCov = np.array([[1, 0],
-                                           [0, 1]], np.float32) * measurement_noise
-
-        kf.errorCovPost = np.eye(4).astype(np.float32)
-        kf.statePost = np.array([measurements[0][0], 0, measurements[0][1], 0], dtype=np.float32)
-
-        states = []
-        for measurement in measurements:
-            # predict the state
-            predicted = kf.predict()
-            # correct the state with the measurement
-            corrected = kf.correct(np.array(measurement, np.float32))
-            states.append(corrected)
-
-
-        self.states = [np.array([int(x[0]), int(x[2])]) for x in states]
-
 
     def init_calib_record(self):
         self.calib_record = dict()
@@ -320,4 +303,3 @@ class model:
         length = 0.3
         self.visualizer.draw_3d_line(
             face.center, face.center + length * np.array([1,1,-1]) * face.gaze_vector)
-

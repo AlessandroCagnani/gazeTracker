@@ -8,7 +8,7 @@ import yacs.config
 
 
 class Model(nn.Module):
-    def __init__(self, config: yacs.config.CfgNode):
+    def __init__(self):
         super().__init__()
         self.feature_extractor = torchvision.models.alexnet(
             pretrained=True).features
