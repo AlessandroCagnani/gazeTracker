@@ -10,7 +10,7 @@ from camera import camera
 
 def main():
     parser = argparse.ArgumentParser(description='Camera calibration')
-    parser.add_argument('--output_dir', type=str, default='calibration', help='Output directory')
+    parser.add_argument('--output_dir', type=str, default='data/camera', help='Output directory')
     parser.add_argument('--pattern', type=str, default='8x6', help='Pattern size')
     parser.add_argument('--square_size', type=int, default=1, help='Square size')
 
