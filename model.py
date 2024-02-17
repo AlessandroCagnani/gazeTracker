@@ -7,6 +7,8 @@ from typing import Tuple
 import json
 from filterpy.kalman import KalmanFilter
 import collections
+import math
+
 from pykalman import KalmanFilter
 
 
@@ -26,7 +28,7 @@ def get_point_on_screen(monitor_mm: Tuple[float, float], monitor_pixels: Tuple[f
     result_x = result_x * (monitor_pixels[0] / monitor_mm[0])
 
     result_y = result[1]
-    result_y = result_y - 20  # 20 mm offset
+    result_y = result_y #- 50  # 20 mm offset
     result_y = min(result_y, monitor_mm[1])
     result_y = result_y * (monitor_pixels[1] / monitor_mm[1])
 
@@ -42,11 +44,10 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return super(NpEncoder, self).default(obj)
 
-
-
 class StreamingMovingAverage:
-    def __init__(self, window_size):
+    def __init__(self, window_size, sigma=2):
         self.window_size = window_size
+        self.sigma = sigma
         self.points = collections.deque(maxlen=window_size)
 
     def update(self, point):
@@ -56,11 +57,17 @@ class StreamingMovingAverage:
     def calculate_average(self):
         if not self.points:
             return None
-        sum_x, sum_y = 0, 0
-        for point in self.points:
-            sum_x += point[0]
-            sum_y += point[1]
-        return sum_x / len(self.points), sum_y / len(self.points)
+        sum_x, sum_y, weights_sum = 0, 0, 0
+        n = len(self.points)
+        for i, point in enumerate(self.points):
+            weight = self.gaussian(i, n-1, self.sigma)
+            sum_x += weight * point[0]
+            sum_y += weight * point[1]
+            weights_sum += weight
+        return sum_x / weights_sum, sum_y / weights_sum
+
+    def gaussian(self, x, mu, sigma):
+        return (1.0 / (math.sqrt(2.0 * math.pi) * sigma)) * math.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
 
 import statsmodels.api as sm
