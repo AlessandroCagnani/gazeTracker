@@ -8,8 +8,11 @@ GazeTracker is my appearance-based gaze estimation system developed as part of a
 **Full-Face Gaze Estimation**: Utilizes a CNN model optimized with a spatial weighting mechanism to focus on relevant facial features for gaze estimation.
 <p align="center">
   <img src="images/model_arch.png" width="300" alt="Home Window">
+</p>
+<p align="center">
   <img src="images/train.png" width="300" alt="Home Window">
 </p>
+  
 
 **3D Gaze Direction**: Estimates 3D gaze direction from a full-face image, enabling applications in various fields such as marketing research, human-computer interaction, and healthcare.\
 **Dataset Utilization**: Employs the MPIIFaceGaze dataset for training, ensuring robustness across diverse lighting conditions, head poses, and gaze directions.\
